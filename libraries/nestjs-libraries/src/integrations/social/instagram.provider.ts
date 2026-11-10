@@ -645,7 +645,39 @@ export class InstagramProvider
     } catch {
       // Not a Unified login token, or the edge is unavailable
     }
+
+    // A system-user token from a Unified login configuration can use the
+    // accounts the login granted, but Meta does not always list them on the
+    // edge above (measured 2026-11-10: empty list, while the token could read
+    // and publish to the account by its ID). Accounts named in
+    // INSTAGRAM_UNIFIED_ACCOUNT_IDS are offered when the token can read them.
+    const listed = new Set(accounts.map((a: any) => a?.id));
+    for (const id of this.unifiedAccountIds) {
+      if (listed.has(id)) continue;
+      try {
+        const account: any = await (
+          await fetch(
+            `https://graph.facebook.com/${META_GRAPH_API_VERSION}/${encodeURIComponent(
+              id
+            )}?fields=id,username,name,profile_picture_url&access_token=${accessToken}`
+          )
+        ).json();
+        if (account?.id && !account.error) {
+          accounts.push(account);
+          listed.add(account.id);
+        }
+      } catch {
+        // The token cannot reach this account; leave it out
+      }
+    }
     return accounts;
+  }
+
+  private get unifiedAccountIds(): string[] {
+    return (process.env.INSTAGRAM_UNIFIED_ACCOUNT_IDS || '')
+      .split(',')
+      .map((id) => id.trim())
+      .filter((id) => /^\d+$/.test(id));
   }
 
   @DashboardFunction()
